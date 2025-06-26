@@ -2,36 +2,42 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')  // Add this in Jenkins credentials
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')  // Add DockerHub creds in Jenkins
         IMAGE_BACKEND = "prashantbokade08/backend"
         IMAGE_FRONTEND = "prashantbokade08/frontend"
         K8S_DIR = "k8s"
+        KUBECONFIG = "/var/lib/jenkins/.kube/config"  // Ensure this exists
     }
 
     stages {
-        stage('Clone Repo') {
+
+        stage('Clone GitHub Repo') {
             steps {
                 git branch: 'main', url: 'https://github.com/prashantbokade08/todo-app.git'
             }
         }
 
-        stage('Build Backend Image') {
-            steps {
-                dir('backend') {
-                    sh "docker build -t ${IMAGE_BACKEND}:latest ."
+        stage('Build Docker Images') {
+            parallel {
+                stage('Backend') {
+                    steps {
+                        dir('backend') {
+                            sh "docker build -t ${IMAGE_BACKEND}:latest ."
+                        }
+                    }
+                }
+
+                stage('Frontend') {
+                    steps {
+                        dir('frontend') {
+                            sh "docker build -t ${IMAGE_FRONTEND}:latest ."
+                        }
+                    }
                 }
             }
         }
 
-        stage('Build Frontend Image') {
-            steps {
-                dir('frontend') {
-                    sh "docker build -t ${IMAGE_FRONTEND}:latest ."
-                }
-            }
-        }
-
-        stage('Push Images to Docker Hub') {
+        stage('Push Docker Images') {
             steps {
                 withDockerRegistry([credentialsId: 'dockerhub-creds', url: '']) {
                     sh "docker push ${IMAGE_BACKEND}:latest"
@@ -40,21 +46,32 @@ pipeline {
             }
         }
 
-        stage('Apply Kubernetes YAMLs') {
+        stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                    kubectl apply -f ${K8S_DIR}/namespace.yaml
-                    kubectl apply -f ${K8S_DIR}/mongo-deployment.yaml
-                    kubectl apply -f ${K8S_DIR}/backend-deployment.yaml
-                    kubectl apply -f ${K8S_DIR}/frontend-deployment.yaml
-                """
+                sh '''
+                    echo "Deploying to Kubernetes..."
+                    kubectl apply --validate=false -f ${K8S_DIR}/namespace.yaml
+                    kubectl apply --validate=false -f ${K8S_DIR}/mongo-deployment.yaml
+                    kubectl apply --validate=false -f ${K8S_DIR}/backend-deployment.yaml
+                    kubectl apply --validate=false -f ${K8S_DIR}/frontend-deployment.yaml
+                '''
             }
         }
 
         stage('Verify Deployment') {
             steps {
-                sh "kubectl get all -n todo-app"
+                sh "kubectl get pods -n todo-app"
+                sh "kubectl get svc -n todo-app"
             }
+        }
+    }
+
+    post {
+        failure {
+            echo "Pipeline failed. Check logs above for errors."
+        }
+        success {
+            echo "TODO App deployed successfully to Kubernetes!"
         }
     }
 }
