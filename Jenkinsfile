@@ -6,7 +6,8 @@ pipeline {
         IMAGE_BACKEND = "prashantbokade08/backend"
         IMAGE_FRONTEND = "prashantbokade08/frontend"
         K8S_DIR = "k8s"
-        KUBECONFIG = "${HOME}/.kube/config"
+        KUBECONFIG = "/var/lib/jenkins/.kube/config"
+        MINIKUBE_HOME = "/var/lib/jenkins"
     }
 
     stages {
